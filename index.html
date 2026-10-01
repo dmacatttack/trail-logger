@@ -46,6 +46,43 @@
             margin-top: 0;
         }
 
+        /* User Guide button */
+        #guide-button {
+            margin-top: 15px;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+
+        /* User Guide popup */
+        #guide-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        /* Popup contents */
+        #guide-content {
+            background-color: white;
+            width: 400px;
+            max-width: 80%;
+            margin: 100px auto;
+            padding: 25px;
+            box-sizing: border-box;
+            border-radius: 8px;
+        }
+
+        /* Close button */
+        #close-guide {
+            float: right;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
         /* Trail import box */
         #drop-zone {
             margin-top: 20px;
@@ -100,6 +137,11 @@
                 National Parks, forests, trails,
                 and places I've visited.
             </p>
+
+            <!-- User Guide button -->
+            <button id="guide-button">
+                ⚙️ User Guide
+            </button>
 
             <h3>Map Layers</h3>
 
@@ -184,10 +226,80 @@
     </div>
 
 
+    <!-- User Guide popup -->
+    <div id="guide-modal">
+
+        <div id="guide-content">
+
+            <span id="close-guide">&times;</span>
+
+            <h2>How to Add a Trail</h2>
+
+            <ol>
+
+                <li>
+                    <strong>Go to AllTrails</strong>
+                </li>
+
+                <li>
+                    <strong>Find your route</strong>
+                </li>
+
+                <li>
+                    <strong>Download the route as a JSON file</strong>
+                </li>
+
+                <li>
+                    <strong>Upload the JSON file in the Import Trail box</strong>
+                </li>
+
+            </ol>
+
+        </div>
+
+    </div>
+
+
     <!-- MapLibre JavaScript -->
     <script src="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js"></script>
 
     <script>
+
+        // --------------------------------------------------
+        // USER GUIDE
+        // --------------------------------------------------
+
+        const guideButton =
+            document.getElementById('guide-button');
+
+        const guideModal =
+            document.getElementById('guide-modal');
+
+        const closeGuide =
+            document.getElementById('close-guide');
+
+
+        // Open the User Guide
+        guideButton.addEventListener(
+            'click',
+            () => {
+
+                guideModal.style.display = 'block';
+
+            }
+        );
+
+
+        // Close the User Guide
+        closeGuide.addEventListener(
+            'click',
+            () => {
+
+                guideModal.style.display = 'none';
+
+            }
+        );
+
 
         // Create the map
         const map = new maplibregl.Map({
