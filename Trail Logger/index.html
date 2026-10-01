@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My Outdoor Map</title>
+
+    <meta charset="utf-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- MapLibre CSS -->
+    <link
+        href="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.css"
+        rel="stylesheet"
+    >
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Main page */
+        #app {
+            display: flex;
+            height: 80vh;
+            margin: 40px;
+        }
+
+        /* Left side panel */
+        #sidebar {
+            width: 250px;
+            padding: 20px;
+            background-color: #f2f2f2;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        /* Map window */
+        #map {
+            flex: 1;
+            border: 2px solid black;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            margin-top: 0;
+        }
+
+        /* Trail import box */
+        #drop-zone {
+            margin-top: 20px;
+            padding: 20px;
+            border: 2px dashed #777;
+            text-align: center;
+            background-color: white;
+            cursor: pointer;
+        }
+
+        #drop-zone.drag-over {
+            background-color: #e0e0e0;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        #import-status {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        /* Uploaded trail list */
+        #uploaded-trails {
+            margin-top: 10px;
+            padding-left: 20px;
+        }
+
+        #uploaded-trails li {
+            margin-bottom: 8px;
+            word-break: break-word;
+            cursor: pointer;
+        }
+
+        #uploaded-trails li:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="app">
+
+        <!-- Main sidebar -->
+        <div id="sidebar">
+
+            <h1>My Outdoor Map</h1>
+
+            <p>
+                National Parks, forests, trails,
+                and places I've visited.
+            </p>
+
+            <h3>Map Layers</h3>
+
+            <label>
+                <input type="checkbox">
+                National Parks
+            </label>
+
+            <br>
+
+            <label>
+                <input type="checkbox">
+                National Forests
+            </label>
+
+            <br>
+
+            <label>
+                <input
+                    type="checkbox"
+                    id="topo-checkbox"
+                    checked
+                >
+                USGS Topo
+            </label>
+
+            <br>
+
+            <label>
+                <input
+                    type="checkbox"
+                    id="trails-checkbox"
+                    checked
+                >
+                Trails
+            </label>
+
+            <br>
+
+            <label>
+                <input type="checkbox">
+                My Trips
+            </label>
+
+
+            <h3>Import Trail</h3>
+
+            <!-- Drag and drop area -->
+            <div id="drop-zone">
+
+                <p>
+                    Drag a .js trail file here
+                </p>
+
+                <p>
+                    or click to browse
+                </p>
+
+                <input
+                    type="file"
+                    id="file-input"
+                    accept=".js"
+                >
+
+            </div>
+
+
+            <div id="import-status"></div>
+
+
+            <!-- Uploaded trail list -->
+            <h3>Uploaded Trails</h3>
+
+            <ul id="uploaded-trails"></ul>
+
+        </div>
+
+
+        <!-- Map -->
+        <div id="map"></div>
+
+    </div>
+
+
+    <!-- MapLibre JavaScript -->
+    <script src="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js"></script>
+
+    <script>
+
+        // Create the map
+        const map = new maplibregl.Map({
+
+            container: 'map',
+
+            style: 'https://demotiles.maplibre.org/style.json',
+
+            // Starting location
+            center: [-122.92, 40.87],
+
+            zoom: 12
+
+        });
+
+
+        // Store all trail layer IDs
+        const trailLayerIds = [];
+
+
+        // Counter for imported trails
+        let importedTrailNumber = 0;
+
+
+        // Store imported trail information
+        const uploadedTrails = [];
+
+
+        // --------------------------------------------------
+        // LOAD EXISTING TRAILS
+        // --------------------------------------------------
+
+        map.on('load', async () => {
+
+            /*
+             * USGS TOPO MAP
+             */
+
+            map.addSource('usgs-topo', {
+
+                type: 'raster',
+
+                tiles: [
+                    'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}'
+                ],
+
+                tileSize: 256
+
+            });
+
+
+            // Add the USGS Topo map
+            map.addLayer({
+
+                id: 'usgs-topo-layer',
+
+                type: 'raster',
+
+                source: 'usgs-topo',
+
+                paint: {
+
+                    'raster-opacity': 0.85
+
+                }
+
+            });
+
+
+            // Load the trail log
+            try {
+
+                const response = await fetch(
+                    'maps/logs/trails.txt'
+                );
+
+                const text = await response.text();
+
+
+                // Get the trail filenames
+                const trailFiles = text
+                    .split('\n')
+                    .map(filename => filename.trim())
+                    .filter(filename => filename !== '');
+
+
+                // Load every existing trail
+                for (
+                    let i = 0;
+                    i < trailFiles.length;
+                    i++
+                ) {
+
+                    const filename = trailFiles[i];
+
+                    try {
+
+                        // Load the trail file
+                        const response = await fetch(
+                            'maps/trail/' + filename
+                        );
+
+
+                        // Read the file as text
+                        const trailText =
+                            await response.text();
+
+
+                        // Convert JSON text into object
+                        const trailData =
+                            JSON.parse(trailText);
+
+
+                        // Get all track segments
+                        const trackSegments =
+                            trailData.data.trackData;
+
+
+                        // Convert segments into coordinates
+                        const coordinates =
+                            trackSegments.map(segment => {
+
+                                return segment.map(point => [
+
+                                    point.lon,
+                                    point.lat
+
+                                ]);
+
+                            });
+
+
+                        // Create unique IDs
+                        const trailId =
+                            'trail-' + i;
+
+                        const sourceId =
+                            trailId + '-source';
+
+                        const layerId =
+                            trailId + '-line';
+
+
+                        // Add trail to map
+                        map.addSource(sourceId, {
+
+                            type: 'geojson',
+
+                            data: {
+
+                                type: 'Feature',
+
+                                geometry: {
+
+                                    type: 'MultiLineString',
+
+                                    coordinates: coordinates
+
+                                }
+
+                            }
+
+                        });
+
+
+                        // Draw trail
+                        map.addLayer({
+
+                            id: layerId,
+
+                            type: 'line',
+
+                            source: sourceId,
+
+                            paint: {
+
+                                'line-width': 4,
+
+                                'line-color': '#ff0000'
+
+                            }
+
+                        });
+
+
+                        // Remember layer
+                        trailLayerIds.push(layerId);
+
+
+                        console.log(
+                            'Loaded trail:',
+                            filename
+                        );
+
+                    }
+
+                    catch (error) {
+
+                        console.error(
+                            'Could not load trail:',
+                            filename,
+                            error
+                        );
+
+                    }
+
+                }
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    'Could not load trail log:',
+                    error
+                );
+
+            }
+
+        });
+
+
+        // --------------------------------------------------
+        // TRAILS CHECKBOX
+        // --------------------------------------------------
+
+        const trailsCheckbox =
+            document.getElementById('trails-checkbox');
+
+
+        trailsCheckbox.addEventListener(
+            'change',
+            () => {
+
+                const visibility =
+                    trailsCheckbox.checked
+                        ? 'visible'
+                        : 'none';
+
+
+                trailLayerIds.forEach(layerId => {
+
+                    map.setLayoutProperty(
+                        layerId,
+                        'visibility',
+                        visibility
+                    );
+
+                });
+
+            }
+        );
+
+
+        // --------------------------------------------------
+        // USGS TOPO CHECKBOX
+        // --------------------------------------------------
+
+        const topoCheckbox =
+            document.getElementById('topo-checkbox');
+
+
+        topoCheckbox.addEventListener(
+            'change',
+            () => {
+
+                const visibility =
+                    topoCheckbox.checked
+                        ? 'visible'
+                        : 'none';
+
+
+                if (
+                    map.getLayer('usgs-topo-layer')
+                ) {
+
+                    map.setLayoutProperty(
+                        'usgs-topo-layer',
+                        'visibility',
+                        visibility
+                    );
+
+                }
+
+            }
+        );
+
+
+        // --------------------------------------------------
+        // DRAG AND DROP
+        // --------------------------------------------------
+
+        const dropZone =
+            document.getElementById('drop-zone');
+
+        const fileInput =
+            document.getElementById('file-input');
+
+        const importStatus =
+            document.getElementById('import-status');
+
+        const uploadedTrailsList =
+            document.getElementById('uploaded-trails');
+
+
+        // Clicking the box opens file browser
+        dropZone.addEventListener(
+            'click',
+            () => {
+
+                fileInput.click();
+
+            }
+        );
+
+
+        // File selected through browser
+        fileInput.addEventListener(
+            'change',
+            () => {
+
+                if (fileInput.files.length > 0) {
+
+                    loadDroppedTrail(
+                        fileInput.files[0]
+                    );
+
+                }
+
+            }
+        );
+
+
+        // File dragged over box
+        dropZone.addEventListener(
+            'dragover',
+            (event) => {
+
+                event.preventDefault();
+
+                dropZone.classList.add(
+                    'drag-over'
+                );
+
+            }
+        );
+
+
+        // File leaves box
+        dropZone.addEventListener(
+            'dragleave',
+            () => {
+
+                dropZone.classList.remove(
+                    'drag-over'
+                );
+
+            }
+        );
+
+
+        // File dropped
+        dropZone.addEventListener(
+            'drop',
+            (event) => {
+
+                event.preventDefault();
+
+                dropZone.classList.remove(
+                    'drag-over'
+                );
+
+
+                const files =
+                    event.dataTransfer.files;
+
+
+                if (files.length > 0) {
+
+                    loadDroppedTrail(
+                        files[0]
+                    );
+
+                }
+
+            }
+        );
+
+
+        // --------------------------------------------------
+        // LOAD A DROPPED TRAIL
+        // --------------------------------------------------
+
+        async function loadDroppedTrail(file) {
+
+            // Make sure it is a .js file
+            if (
+                !file.name.toLowerCase().endsWith('.js')
+            ) {
+
+                importStatus.textContent =
+                    'Please choose a .js trail file.';
+
+                return;
+
+            }
+
+
+            try {
+
+                importStatus.textContent =
+                    'Loading trail...';
+
+
+                // Read the file
+                const trailText =
+                    await file.text();
+
+
+                // Convert JSON text into object
+                const trailData =
+                    JSON.parse(trailText);
+
+
+                // Get all track segments
+                const trackSegments =
+                    trailData.data.trackData;
+
+
+                // Convert segments into coordinates
+                const coordinates =
+                    trackSegments.map(segment => {
+
+                        return segment.map(point => [
+
+                            point.lon,
+                            point.lat
+
+                        ]);
+
+                    });
+
+
+                // Create unique IDs
+                const trailId =
+                    'imported-trail-' +
+                    importedTrailNumber;
+
+                const sourceId =
+                    trailId + '-source';
+
+                const layerId =
+                    trailId + '-line';
+
+
+                // Add trail to map
+                map.addSource(sourceId, {
+
+                    type: 'geojson',
+
+                    data: {
+
+                        type: 'Feature',
+
+                        geometry: {
+
+                            type: 'MultiLineString',
+
+                            coordinates: coordinates
+
+                        }
+
+                    }
+
+                });
+
+
+                // Draw trail
+                map.addLayer({
+
+                    id: layerId,
+
+                    type: 'line',
+
+                    source: sourceId,
+
+                    paint: {
+
+                        'line-width': 4,
+
+                        'line-color': '#0000ff'
+
+                    }
+
+                });
+
+
+                // Remember layer
+                trailLayerIds.push(layerId);
+
+
+                // Make sure Trails is turned on
+                trailsCheckbox.checked = true;
+
+
+                // Add trail to uploaded trail list
+                uploadedTrails.push({
+
+                    name: file.name,
+
+                    layerId: layerId
+
+                });
+
+
+                // Update the list
+                updateUploadedTrailList();
+
+
+                // Increase counter
+                importedTrailNumber++;
+
+
+                // Calculate bounding box
+                const bounds =
+                    new maplibregl.LngLatBounds();
+
+
+                coordinates.forEach(segment => {
+
+                    segment.forEach(point => {
+
+                        bounds.extend(point);
+
+                    });
+
+                });
+
+
+                // Zoom to trail
+                map.fitBounds(
+                    bounds,
+                    {
+                        padding: 50
+                    }
+                );
+
+
+                // Tell user it worked
+                importStatus.textContent =
+                    'Loaded: ' + file.name;
+
+
+                console.log(
+                    'Imported trail:',
+                    file.name
+                );
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    'Could not import trail:',
+                    error
+                );
+
+
+                importStatus.textContent =
+                    'Could not read this trail file.';
+
+            }
+
+        }
+
+
+        // --------------------------------------------------
+        // UPDATE UPLOADED TRAIL LIST
+        // --------------------------------------------------
+
+        function updateUploadedTrailList() {
+
+            // Clear current list
+            uploadedTrailsList.innerHTML = '';
+
+
+            // Add every uploaded trail
+            uploadedTrails.forEach(trail => {
+
+                const listItem =
+                    document.createElement('li');
+
+
+                listItem.textContent =
+                    trail.name;
+
+
+                // Clicking the filename zooms to the trail
+                listItem.addEventListener(
+                    'click',
+                    () => {
+
+                        zoomToTrail(
+                            trail.layerId
+                        );
+
+                    }
+                );
+
+
+                uploadedTrailsList.appendChild(
+                    listItem
+                );
+
+            });
+
+        }
+
+
+        // --------------------------------------------------
+        // ZOOM TO TRAIL
+        // --------------------------------------------------
+
+        function zoomToTrail(layerId) {
+
+            const source =
+                map.getSource(
+                    layerId.replace(
+                        '-line',
+                        '-source'
+                    )
+                );
+
+
+            if (!source) {
+
+                return;
+
+            }
+
+
+            const data =
+                source._data;
+
+
+            const bounds =
+                new maplibregl.LngLatBounds();
+
+
+            data.geometry.coordinates.forEach(
+                segment => {
+
+                    segment.forEach(point => {
+
+                        bounds.extend(point);
+
+                    });
+
+                }
+            );
+
+
+            map.fitBounds(
+                bounds,
+                {
+                    padding: 50
+                }
+            );
+
+        }
+
+    </script>
+
+</body>
+</html>
